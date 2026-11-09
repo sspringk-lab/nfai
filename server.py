@@ -1,19 +1,20 @@
 import base64
+import io
+import os
 import re
 import traceback
-from typing import Dict, List, Optional, Tuple
-import google.auth
-from google.cloud import storage
-from google.genai import Client, types
-from fastapi import FastAPI
+from typing import List, Optional
+import pandas as pd
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
-import io
-import os
-import pandas as pd
+
+# 제미나이 공식 SDK 임포트
+from google import genai
+from google.genai import types
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -30,74 +31,28 @@ class ChatRequest(BaseModel):
     image: Optional[str] = None
     history: List[ChatMessage] = []
 
-# --- 지식 파일 GCS 리소스 정의 ---
-_KNOWLEDGE_RESOURCES = [
-    {"fileName": '증상_마스터.csv', "gcsUri": 'gs://nfaaidatav261029/증상_마스터.csv', "mimeType": 'text/csv'},
-    {"fileName": '조치별_검색데이터.csv', "gcsUri": 'gs://nfaaidatav261029/조치별_검색데이터.csv', "mimeType": 'text/csv'},
-    {"fileName": '우선순위_규칙.csv', "gcsUri": 'gs://nfaaidatav261029/우선순위_규칙.csv', "mimeType": 'text/csv'},
-    {"fileName": 'Lima_Engineering_Manual_KR_Rev1.1 (3).pdf', "gcsUri": 'gs://nfaaidatav261029/Lima_Engineering_Manual_KR_Rev1.1 (3).pdf', "mimeType": 'application/pdf'},
-    {"fileName": 'NFA선별기_기계셋팅_메뉴얼.pdf', "gcsUri": 'gs://nfaaidatav261029/NFA선별기_기계셋팅_메뉴얼.pdf', "mimeType": 'application/pdf'},
-    {"fileName": 'SELMA100T Grade SOP.pdf', "gcsUri": 'gs://nfaaidatav261029/SELMA100T Grade SOP.pdf', "mimeType": 'application/pdf'},
-    {"fileName": 'SELMA150-H PDF 통합본.pdf', "gcsUri": 'gs://nfaaidatav261029/SELMA150-H PDF 통합본.pdf', "mimeType": 'application/pdf'},
-    {"fileName": 'SELMA200-H PDF 통합본.pdf', "gcsUri": 'gs://nfaaidatav261029/SELMA200-H PDF 통합본.pdf', "mimeType": 'application/pdf'},
-    {"fileName": 'sLaser Manual_kor_ver1.3.007.pdf', "gcsUri": 'gs://nfaaidatav261029/sLaser Manual_kor_ver1.3.007.pdf', "mimeType": 'application/pdf'},
-    {"fileName": '등급 조정 SELMA200C SOP.pdf', "gcsUri": 'gs://nfaaidatav261029/등급 조정 SELMA200C SOP.pdf', "mimeType": 'application/pdf'},
-    {"fileName": '20230116-제품 사양서 (SELMA200-H).pdf', "gcsUri": 'gs://nfaaidatav261029/20230116-제품 사양서 (SELMA200-H).pdf', "mimeType": 'application/pdf'},
-    {"fileName": '260323 카메라 사양서.pdf', "gcsUri": 'gs://nfaaidatav261029/260323 카메라 사양서.pdf', "mimeType": 'application/pdf'},
-    {"fileName": '등급 조정 SELMA200T SOP.pdf', "gcsUri": 'gs://nfaaidatav261029/등급 조정 SELMA200T SOP.pdf', "mimeType": 'application/pdf'},
-    {"fileName": '제품 사양서 (LIMA200-H).pdf', "gcsUri": 'gs://nfaaidatav261029/제품 사양서 (LIMA200-H).pdf', "mimeType": 'application/pdf'},
-    {"fileName": '제품 사양서 (SELMA150P-H).pdf', "gcsUri": 'gs://nfaaidatav261029/제품 사양서 (SELMA150P-H).pdf', "mimeType": 'application/pdf'},
-    {"fileName": '20261023 하반기 LIMA_PT.pdf', "gcsUri": 'gs://nfaaidatav261029/20261023 하반기 LIMA_PT.pdf', "mimeType": 'application/pdf'},
-]
-
-_KNOWLEDGE_GCS_URI_RE = re.compile(r"^gs://([^/]+)/(.+)$")
-
-def _parse_knowledge_gcs_uri(uri: str) -> Tuple[str, str]:
-    match = _KNOWLEDGE_GCS_URI_RE.match(uri)
-    if not match:
-        raise ValueError(f"Invalid GCS URI: {uri}")
-    return match.group(1), match.group(2)
-
-_UPLOADED_FILE_PARTS = []
-
-# --- 💡 Pandas로 검색하기 위해 서버 메모리에 캐싱할 데이터프레임 전역 변수 ---
+# --- 💡 서버 메모리에 캐싱할 데이터프레임 전역 변수 ---
 df_symptom_cache = pd.DataFrame()
 df_action_cache = pd.DataFrame()
 
-def preload_and_upload_files_to_gemini():
-    global _UPLOADED_FILE_PARTS, df_symptom_cache, df_action_cache
+def load_local_csv_data():
+    global df_symptom_cache, df_action_cache
     try:
-        credentials, _ = google.auth.default(quota_project_id="305478931531")
-        storage_client = storage.Client(project="305478931531", credentials=credentials)
-        client = Client(vertexai=True, location="global")
+        symptom_path = os.path.join("data", "증상_마스터.csv")
+        action_path = os.path.join("data", "조치별_검색데이터.csv")
         
-        for kr in _KNOWLEDGE_RESOURCES:
-            bucket_name, blob_name = _parse_knowledge_gcs_uri(kr["gcsUri"])
-            blob = storage_client.bucket(bucket_name).blob(blob_name)
-            data = blob.download_as_bytes()
-            if data:
-                # 1. 제미나이 업로드용 파일 파트 생성
-                uploaded_file = client.files.upload(
-                    file=io.BytesIO(data),
-                    config=types.UploadFileConfig(
-                        display_name=kr["fileName"],
-                        mime_type=kr["mimeType"]
-                    )
-                )
-                _UPLOADED_FILE_PARTS.append(uploaded_file)
-                print(f"Uploaded knowledge file to Gemini: {kr['fileName']} (URI: {uploaded_file.uri})")
-                
-                # 2. CSV 파일인 경우 Pandas 캐싱을 위해 메모리에 로드
-                if kr["fileName"] == '증상_마스터.csv':
-                    df_symptom_cache = pd.read_csv(io.BytesIO(data))
-                elif kr["fileName"] == '조치별_검색데이터.csv':
-                    df_action_cache = pd.read_csv(io.BytesIO(data))
-                    
-        print("✅ Pandas 매뉴얼 데이터 캐싱 완료 (증상 마스터 & 조치 데이터)")
+        if os.path.exists(symptom_path):
+            df_symptom_cache = pd.read_csv(symptom_path)
+            print(f"✅ 증상_마스터.csv 로딩 완료 ({len(df_symptom_cache)}행)")
+        
+        if os.path.exists(action_path):
+            df_action_cache = pd.read_csv(action_path)
+            print(f"✅ 조치별_검색데이터.csv 로딩 완료 ({len(df_action_cache)}행)")
+            
     except Exception as e:
-        print(f"Gemini file upload warning: {e}")
+        print(f"CSV 로딩 경고: {e}")
 
-preload_and_upload_files_to_gemini()
+load_local_csv_data()
 
 @app.get("/")
 async def get_frontend():
@@ -106,10 +61,15 @@ async def get_frontend():
 @app.post("/api/chat")
 def chat_endpoint(req: ChatRequest):
     try:
-        client = Client(vertexai=True, location="global")
+        # Render 환경 변수에 등록된 GEMINI_API_KEY로 클라이언트 초기화
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return {"reply": "오류: Render 환경 변수에 GEMINI_API_KEY가 설정되지 않았습니다."}
+            
+        client = genai.Client(api_key=api_key)
         contents = []
         
-        # --- 💡 Pandas를 활용한 사전 검색 (Pre-filtering) 로직 ---
+        # --- Pandas를 활용한 사전 검색 (Pre-filtering) 로직 ---
         pandas_search_context = ""
         if req.message and not df_symptom_cache.empty and not df_action_cache.empty:
             matched = df_symptom_cache[df_symptom_cache['문제 발생(증상/질문)'].str.contains(req.message, na=False)]
@@ -123,20 +83,12 @@ def chat_endpoint(req: ChatRequest):
                 pandas_search_context = f"\n\n[내부 매뉴얼 Pandas 사전 검색 결과]\n- 감지된 증상: {s_name} (ID: {s_id})\n- 권장 조치 순서:\n"
                 for _, act_row in actions.iterrows():
                     pandas_search_context += f"  * {act_row['조치 순서']}순위 ({act_row['우선순위 판단 기준']}): {act_row['해결 방법(조치 내용/답변)']}\n"
-        # ----------------------------------------------------
 
-        for i, msg in enumerate(req.history):
+        for msg in req.history:
             role = "user" if msg.role == "user" else "model"
-            parts = []
-            if i == 0 and role == "user" and _UPLOADED_FILE_PARTS:
-                parts.extend(_UPLOADED_FILE_PARTS)
-            parts.append(types.Part.from_text(text=msg.text))
-            contents.append(types.Content(role=role, parts=parts))
+            contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.text)]))
 
         current_parts = []
-        if not req.history and _UPLOADED_FILE_PARTS:
-            current_parts.extend(_UPLOADED_FILE_PARTS)
-
         if req.image:
             mime_type = "image/jpeg"
             image_data = req.image
@@ -163,7 +115,7 @@ def chat_endpoint(req: ChatRequest):
             f"- 소모품: {consumables_str}\n\n"
             f"- 회사 사장: 신용관\n"
             "Guidelines:\n"
-            "1. 정보 우선순위: '등급 조정(Grade SOP)' 등 주요 스펙 문의는 첨부된 PDF 매뉴얼과 [내부 매뉴얼 Pandas 사전 검색 결과]를 최우선으로 참고하세요.\n"
+            "1. 정보 우선순위: '등급 조정(Grade SOP)' 등 주요 스펙 문의는 [내부 매뉴얼 Pandas 사전 검색 결과]를 최우선으로 참고하세요.\n"
             "2. 증상 확인 필수: 사용자가 문제를 말하면 즉시 해결책을 주지 말고, '1. 기계가 멈췄어요', '2. 이상한 소리가 나요' 등 알기 쉬운 일상 용어로 번호 선택지를 먼저 제시하세요.\n"
             "3. 추가 입력 유도: 선택지 안내 시, 목록 아래에 \"원하시는 내용이 없다면 증상을 더 자세히, 구체적으로 입력해 주세요\"라는 문구를 함께 출력하여 사용자가 직접 글을 쓸 수 있도록 유도하세요.\n"
             "4. 해결책 안내: 사용자가 번호를 선택하면 그때 단계별 조치법을 간결하게 안내하세요.\n"
@@ -174,7 +126,6 @@ def chat_endpoint(req: ChatRequest):
             "9. 언어: 질문 언어에 맞춰 답변하세요."
         )
 
-        # 💡 공식 지원 모델명 반영 완료 (gemini-2.5-flash)
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=contents,
@@ -190,4 +141,4 @@ def chat_endpoint(req: ChatRequest):
         return {"reply": f"오류가 발생했습니다: {str(e)}"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000, timeout_keep_alive=120)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

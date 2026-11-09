@@ -506,21 +506,11 @@
     </div>
 
     <script>
-        // =====================================================================
-        // 💡 [필수 수정 사항] 깃허브에서 접속 시 사용할 NGROK 서버 주소 입력란
-        // ngrok 터널링 주소가 변경될 때마다 이곳을 수정한 후 깃허브에 반영해주세요.
-        // 예: const NGROK_BACKEND_URL = "https://xxxx.ngrok-free.dev"; (끝에 슬래시 제외)
-        // =====================================================================
-        const NGROK_BACKEND_URL = "https://action-commence-doorstep.ngrok-free.dev/";
-        // =====================================================================
-
+        // 💡 렌더 서버가 직접 index.html을 서빙하므로 /static 및 /api/chat 상대 경로를 그대로 사용합니다.
         window.addEventListener('DOMContentLoaded', () => {
-            const isGitHub = window.location.hostname.includes('github.io');
-            const prefix = isGitHub ? '' : '/static/';
-            
             document.querySelectorAll('.dynamic-img').forEach(img => {
                 const srcName = img.getAttribute('data-src');
-                img.src = prefix + srcName;
+                img.src = '/static/' + srcName;
             });
         });
 
@@ -706,9 +696,7 @@
             
             const chatContainer = document.getElementById('chat-container');
             const confirmMsg = "대화 내용을 초기화하시겠습니까?<br><br>1. 네 (즉시 초기화)<br>2. 아니요 (대화내용 유지)";
-            
-            const isGitHub = window.location.hostname.includes('github.io');
-            const iconPath = isGitHub ? 'nfa_icon.png' : '/static/nfa_icon.png';
+            const iconPath = '/static/nfa_icon.png';
 
             let messageHtml = `
                 <div class="bot-message-wrapper">
@@ -753,8 +741,7 @@
 
         function renderWelcomeMessage() {
             const container = document.getElementById('chat-container');
-            const isGitHub = window.location.hostname.includes('github.io');
-            const iconPath = isGitHub ? 'nfa_icon.png' : '/static/nfa_icon.png';
+            const iconPath = '/static/nfa_icon.png';
 
             container.innerHTML = `
                 <div class="bot-message-wrapper">
@@ -822,8 +809,7 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
 
             const loadingId = 'loading-' + Date.now();
-            const isGitHub = window.location.hostname.includes('github.io');
-            const iconPath = isGitHub ? 'nfa_icon.png' : '/static/nfa_icon.png';
+            const iconPath = '/static/nfa_icon.png';
             
             chatContainer.innerHTML += `
                 <div class="bot-message-wrapper" id="${loadingId}" style="margin-bottom: 15px;">
@@ -849,16 +835,10 @@
                 const payload = { message: text, history: chatHistory.slice(0, -1) };
                 if (imgToSend) payload.image = imgToSend;
 
-                // 💡 분기 처리: 깃허브면 ngrok URL을 붙이고, 아니면 상대 경로 사용
-                const apiUrl = isGitHub ? NGROK_BACKEND_URL + '/api/chat' : '/api/chat';
-
-                const response = await fetch(apiUrl, {
+                // 💡 렌더 서버 주소로 직접 API 요청
+                const response = await fetch('/api/chat', {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        // 💡 ngrok 브라우저 경고창(Warning) 우회용 헤더
-                        'ngrok-skip-browser-warning': '69420'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                     signal: currentAbortController.signal
                 });
@@ -892,7 +872,7 @@
                     chatContainer.innerHTML += `
                         <div class="bot-message-wrapper">
                             <img src="${iconPath}" class="bot-avatar-icon" alt="NFA">
-                            <div class="bot-message-content"><div class="bot-text">오류가 발생했습니다. ngrok 주소가 맞는지, 서버가 켜져 있는지 확인해주세요.</div></div>
+                            <div class="bot-message-content"><div class="bot-text">오류가 발생했습니다. 서버 상태를 확인해주세요.</div></div>
                         </div>
                     `;
                 }
@@ -944,9 +924,7 @@
             const escapedText = escapeHtml(mainText.join('\n').trim() || safeText);
             const parsedTextHtml = parseMarkdownBoldToQuotes(escapedText);
             const linkedTextHtml = linkify(parsedTextHtml);
-
-            const isGitHub = window.location.hostname.includes('github.io');
-            const iconPath = isGitHub ? 'nfa_icon.png' : '/static/nfa_icon.png';
+            const iconPath = '/static/nfa_icon.png';
 
             let messageHtml = `
                 <div class="bot-message-wrapper">
