@@ -127,7 +127,7 @@ def chat_endpoint(req: ChatRequest):
         )
 
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction_text
