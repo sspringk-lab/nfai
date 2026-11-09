@@ -1,5 +1,7 @@
 fastapi
 uvicorn
-google-generativeai
+google-genai
 pydantic
-python-multipart
+pandas
+google-cloud-storage
+google-auth
