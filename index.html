@@ -306,7 +306,6 @@
             width: fit-content;
         }
 
-        /* 💡 답변 소요 시간 표시용 아주 작은 회색 글자 스타일 */
         .response-time-meta {
             font-size: 10px;
             color: #888888;
@@ -421,14 +420,14 @@
 </head>
 <body>
     <div id="splash-screen">
-        <img id="splash-logo" src="/static/nfa_logo.png" alt="NFA Logo">
+        <img id="splash-logo" class="dynamic-img" data-src="nfa_logo.png" alt="NFA Logo">
         <div id="splash-text">AI TECHNICAL SUPPORT</div>
     </div>
 
     <div id="app-wrapper">
         <header id="header">
             <div id="header-left">
-                <img id="header-logo" src="/static/nfa_logo.png" alt="NFA Logo">
+                <img id="header-logo" class="dynamic-img" data-src="nfa_logo.png" alt="NFA Logo">
             </div>
 
             <div id="header-center">
@@ -507,6 +506,17 @@
     </div>
 
     <script>
+        // 💡 깃허브 페이지와 기존 서버(FastAPI) 환경 자동 감지 (ngrok/터널링 환경 포함 완벽 호환)
+        window.addEventListener('DOMContentLoaded', () => {
+            const isGitHub = window.location.hostname.includes('github.io');
+            const prefix = isGitHub ? '' : '/static/';
+            
+            document.querySelectorAll('.dynamic-img').forEach(img => {
+                const srcName = img.getAttribute('data-src');
+                img.src = prefix + srcName;
+            });
+        });
+
         if (window.visualViewport) {
             window.visualViewport.addEventListener('resize', () => {
                 document.getElementById('app-wrapper').style.height = window.visualViewport.height + 'px';
@@ -690,9 +700,12 @@
             const chatContainer = document.getElementById('chat-container');
             const confirmMsg = "대화 내용을 초기화하시겠습니까?<br><br>1. 네 (즉시 초기화)<br>2. 아니요 (대화내용 유지)";
             
+            const isGitHub = window.location.hostname.includes('github.io');
+            const iconPath = isGitHub ? 'nfa_icon.png' : '/static/nfa_icon.png';
+
             let messageHtml = `
                 <div class="bot-message-wrapper">
-                    <img src="/static/nfa_icon.png" class="bot-avatar-icon" alt="NFA">
+                    <img src="${iconPath}" class="bot-avatar-icon" alt="NFA">
                     <div class="bot-message-content">
                         <div class="bot-text">${confirmMsg}</div>
                         <div class="options-container">
@@ -733,9 +746,12 @@
 
         function renderWelcomeMessage() {
             const container = document.getElementById('chat-container');
+            const isGitHub = window.location.hostname.includes('github.io');
+            const iconPath = isGitHub ? 'nfa_icon.png' : '/static/nfa_icon.png';
+
             container.innerHTML = `
                 <div class="bot-message-wrapper">
-                    <img src="/static/nfa_icon.png" class="bot-avatar-icon" alt="NFA">
+                    <img src="${iconPath}" class="bot-avatar-icon" alt="NFA">
                     <div class="bot-message-content">
                         <div class="bot-text">${WELCOME_MSG}</div>
                     </div>
@@ -799,10 +815,12 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
 
             const loadingId = 'loading-' + Date.now();
+            const isGitHub = window.location.hostname.includes('github.io');
+            const iconPath = isGitHub ? 'nfa_icon.png' : '/static/nfa_icon.png';
             
             chatContainer.innerHTML += `
                 <div class="bot-message-wrapper" id="${loadingId}" style="margin-bottom: 15px;">
-                    <img src="/static/nfa_icon.png" class="bot-avatar-icon" alt="NFA">
+                    <img src="${iconPath}" class="bot-avatar-icon" alt="NFA">
                     <div class="bot-message-content">
                         <div class="bot-text" style="padding: 6px 12px; line-height: 1.2;">
                             <span class="loading-sub-text" style="margin-bottom: 2px;">자세히 질문 주실수록 <br>답변이 정확하고 빠릅니다.</span>
@@ -818,7 +836,7 @@
             `;
             chatContainer.scrollTop = chatContainer.scrollHeight;
 
-            const startTime = performance.now(); // 💡 응답 시간 측정 시작
+            const startTime = performance.now();
 
             try {
                 const payload = { message: text, history: chatHistory.slice(0, -1) };
@@ -833,7 +851,7 @@
 
                 const data = await response.json();
                 
-                const endTime = performance.now(); // 💡 응답 시간 측정 종료
+                const endTime = performance.now();
                 const durationSec = ((endTime - startTime) / 1000).toFixed(1);
 
                 const loadingEl = document.getElementById(loadingId);
@@ -852,14 +870,14 @@
                 if (err.name === 'AbortError') {
                     chatContainer.innerHTML += `
                         <div class="bot-message-wrapper">
-                            <img src="/static/nfa_icon.png" class="bot-avatar-icon" alt="NFA">
+                            <img src="${iconPath}" class="bot-avatar-icon" alt="NFA">
                             <div class="bot-message-content"><div class="bot-text">답변 생성이 취소되었습니다.</div></div>
                         </div>
                     `;
                 } else {
                     chatContainer.innerHTML += `
                         <div class="bot-message-wrapper">
-                            <img src="/static/nfa_icon.png" class="bot-avatar-icon" alt="NFA">
+                            <img src="${iconPath}" class="bot-avatar-icon" alt="NFA">
                             <div class="bot-message-content"><div class="bot-text">오류가 발생했습니다. 서버 상태를 확인해주세요.</div></div>
                         </div>
                     `;
@@ -913,9 +931,12 @@
             const parsedTextHtml = parseMarkdownBoldToQuotes(escapedText);
             const linkedTextHtml = linkify(parsedTextHtml);
 
+            const isGitHub = window.location.hostname.includes('github.io');
+            const iconPath = isGitHub ? 'nfa_icon.png' : '/static/nfa_icon.png';
+
             let messageHtml = `
                 <div class="bot-message-wrapper">
-                    <img src="/static/nfa_icon.png" class="bot-avatar-icon" alt="NFA">
+                    <img src="${iconPath}" class="bot-avatar-icon" alt="NFA">
                     <div class="bot-message-content">
                         <div class="bot-text">${linkedTextHtml}</div>
             `;
@@ -930,7 +951,6 @@
                 messageHtml += `</div>`;
             }
 
-            // 💡 답변창 바로 밑에 아주 작은 회색 글자로 소요 시간 표시
             if (duration) {
                 messageHtml += `<div class="response-time-meta">⏱️ ${duration}초</div>`;
             }
