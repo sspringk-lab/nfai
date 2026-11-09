@@ -60,7 +60,7 @@ def _parse_knowledge_gcs_uri(uri: str) -> Tuple[str, str]:
 
 _UPLOADED_FILE_PARTS = []
 
-# 💡 Pandas로 검색하기 위해 서버 메모리에 캐싱할 데이터프레임 전역 변수
+# --- 💡 Pandas로 검색하기 위해 서버 메모리에 캐싱할 데이터프레임 전역 변수 ---
 df_symptom_cache = pd.DataFrame()
 df_action_cache = pd.DataFrame()
 
@@ -112,14 +112,12 @@ def chat_endpoint(req: ChatRequest):
         # --- 💡 Pandas를 활용한 사전 검색 (Pre-filtering) 로직 ---
         pandas_search_context = ""
         if req.message and not df_symptom_cache.empty and not df_action_cache.empty:
-            # 사용자의 질문 키워드가 포함된 증상 검색
             matched = df_symptom_cache[df_symptom_cache['문제 발생(증상/질문)'].str.contains(req.message, na=False)]
             if not matched.empty:
                 symptom_row = matched.iloc[0]
                 s_id = symptom_row['증상_ID']
                 s_name = symptom_row['문제 발생(증상/질문)']
                 
-                # 해당 증상 ID의 조치 방법들을 '조치 순서' 순으로 정렬
                 actions = df_action_cache[df_action_cache['증상_ID'] == s_id].sort_values('조치 순서')
                 
                 pandas_search_context = f"\n\n[내부 매뉴얼 Pandas 사전 검색 결과]\n- 감지된 증상: {s_name} (ID: {s_id})\n- 권장 조치 순서:\n"
@@ -149,7 +147,6 @@ def chat_endpoint(req: ChatRequest):
             
             current_parts.append(types.Part.from_bytes(data=base64.b64decode(image_data), mime_type=mime_type))
         
-        # 사용자 메시지에 Pandas가 찾아낸 정밀 매뉴얼 결과를 덧붙여서 전달
         final_user_message = req.message + pandas_search_context
         if final_user_message:
             current_parts.append(types.Part.from_text(text=final_user_message))
@@ -173,12 +170,13 @@ def chat_endpoint(req: ChatRequest):
             "5. 강조 서식: 강조할 때는 마크다운(**) 대신 따옴표(\"텍스트\")를 사용하세요.\n"
             "6. 담당자 연결: 사용자가 연락을 원할때만 전화(02-854-9500)와 카카오톡 채널(http://pf.kakao.com/_AxiSrX/chat)을 안내하세요.\n"
             "7. 일상/기계 외 질문: 기계와 무관한 일상적인 질문이나 잡담도 친근하고 알기 쉽게 답변해 주세요.\n"
-            "8. 말투: 전문용어와 장황한 설명을 배제하고, 모든 연령이 알아듣기 쉽게 아주 쉽고 짧게 답변하세요."
+            "8. 말투: 전문용어와 장황한 설명을 배제하고, 모든 연령이 알아듣기 쉽게 아주 쉽고 짧게 답변하세요.\n"
             "9. 언어: 질문 언어에 맞춰 답변하세요."
         )
 
+        # 💡 공식 지원 모델명 반영 완료 (gemini-2.5-flash)
         response = client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-2.5-flash',
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction_text
